@@ -1,4 +1,6 @@
-# Readable Clojure ns Layout
+Readable Clojure ns Layout
+----
+(by [aria42](http://github.com/aria42))
 
 It's crucial to create namespaces that not only do their job, but minimize the amount of time it takes a fresh pair of eyes to understand the goal of the namespace, what its abstractions are, and how to use it. 
 
