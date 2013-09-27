@@ -10,9 +10,8 @@ In Clojure, there are a potentially daunting number of ways to represent a slice
  - defrecord: `(defrecord Person [first-name last-name])`
  - deftype: `(deftype Person [first-name last-name])`
  - reify: `(defn person [first last] (reify Human (first-name [this] first-name) (last-name [this] last-name)])`
-  
- At first, I thought this session would just cover these data representations.  But, the whole reason we care about data representation is because we want to make it easy to do the **operations** we want on our data -- thus, it makes no sense to think about data in the absence of functions.  A complicating factor is that we sometimes want these functions to be **polymorphic** -- that is, work (differently) across a variety of different data types.  Again, we are provided with a family of options:
-
+ 
+At first, I thought this session would just cover these data representations.  But, the whole reason we care about data representation is because we want to make it easy to do the **operations** we want on our data -- thus, it makes no sense to think about data in the absence of functions.  A complicating factor is that we sometimes want these functions to be **polymorphic** -- that is, work (differently) across a variety of different data types.  Again, we are provided with a family of options:
  
  - plain old functions (with `instance?` and explicit conditional logic for polymorphism)
  - multimethods 
