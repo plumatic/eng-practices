@@ -261,7 +261,7 @@ Regardless, if your data is shared across many namespaces, or serialized and sto
 
 For operating on your data, plain old functions are the simplest and typically best option.  We recommend that you use `safe-get` [[3]](#footnotes) to access fields, use docstrings and schemas to document your code, and organize your namespace into clear public and private sections.  
 
-With this discipline under your belt, the only real benefits of using records and interfaces or protocols are primitive support, and the appearence of lexical scope for your data members.  The price you pay for these features is the extra ceremony around declaring interfaces and data classes, plus (in my opinion) slightly decreased ease of use.  
+With this discipline under your belt, the only real benefits of using records and interfaces or protocols are primitive support, and the appearance of lexical scope for your data members.  The price you pay for these features is the extra ceremony around declaring interfaces and data classes, plus (in my opinion) slightly decreased ease of use.  
 
 If you do need polymorphism, however, ordinary functions are usually not a great choice.  A single `instance?` check or `case` on `:type` isn't the end of the world, and sometimes is the simplest and cleanest solution -- but once these conditionals start appearing in multiple places, there's a good chance you're doing it wrong.
 
@@ -269,16 +269,16 @@ If you do need polymorphism, however, ordinary functions are usually not a great
 
 ### Extreme polymorphism, or polymorphism without data types
 
-If you need polymorphism of an exotic form, where you're not just conditioning on the class of the first argument, then you need multimethods.  In our experience, this is a pretty rare occurence.  Multimethods are so general that you can pick the data format best suited to your application on its own merits.  If you want to use maps for your data representation, a simple `:type` field mapping to a keyword can be uesd for dispatch.
+If you need polymorphism of an exotic form, where you're not just conditioning on the class of the first argument, then you need multimethods.  In our experience, this is a pretty rare occurrence.  Multimethods are so general that you can pick the data format best suited to your application on its own merits.  If you want to use maps for your data representation, a simple `:type` field mapping to a keyword can be used for dispatch.
 
-Simiarly, if you want an extensible method without a corresponding concrete data type, multimethods give you a way to declare open dispatch without tying you down to a concrete data representation.  For example, you can make a function that dispatches on its first argument value (not class), which anyone can extend.  
+Similarly, if you want an extensible method without a corresponding concrete data type, multimethods give you a way to declare open dispatch without tying you down to a concrete data representation.  For example, you can make a function that dispatches on its first argument value (not class), which anyone can extend.  
 
 Beyond these cases, you should probably think hard before using a multimethod.  This is especially true if you have multiple polymorphic methods, since you'll need to repeat your dispatch logic in each multimethod if you choose this option.  
 
 
 ### Maximum mungeability 
 
-We've almost reached the end of the road for plain old maps as well.  But before we get there, it's probably worth mentioning one more way to achieve polymorphism: storing functions as fields, a'la JavaScript (or many languages that came before it).  
+We've almost reached the end of the road for plain old maps as well.  But before we get there, it's probably worth mentioning one more way to achieve polymorphism: storing functions as fields, ala JavaScript (or many languages that came before it).  
 
 ```clojure
 (def my-obj 
@@ -322,7 +322,7 @@ Thus, the choice of `reify` or `defrecord` primarily comes down to what you are 
 
 ### Abstract data members.
 
-We're basically done with our tour, but there's one issue we haven't touched on yet: abstract data members.  What if you have multiple data types (posts and url documents, employees and customers, etc) and want a data-centric interface (all documents have titles, all people have names, etc).  None of Clojure's data types allow for implementation inheritance, so if your employers and customers are separate records, you're out of luck for getting the static checking of Java-style field access (.first-name r).
+We're basically done with our tour, but there's one issue we haven't touched on yet: abstract data members.  What if you have multiple data types (posts and URL documents, employees and customers, etc.) and want a data-centric interface (all documents have titles, all people have names, etc.).  None of Clojure's data types allow for implementation inheritance, so if your employers and customers are separate records, you're out of luck for getting the static checking of Java-style field access (.first-name r).
 
 In this case, there are three options at your disposal, none of which is really ideal:
 
