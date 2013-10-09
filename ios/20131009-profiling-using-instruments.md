@@ -79,3 +79,30 @@ Any leaks found are shown in the Leaks Profiler as red bars. Focus (⎇-click-an
 Open the Extended Details pane and select the leaked object to see the stack trace of the where the leak was performed. In this example, it's a problem with `stringWithURIEncoded`.
 
 ![](http://f.cl.ly/items/1L0d282b1w1M402Q3A1k/Screen%20Shot%202013-09-25%20at%205.01.11%20PM.png)`
+
+Debugger
+----------------
+
+Xcode 5 ships with the LLDB debugger, which is automatically attached to a running application. You can add breakpoints to your project by clicking on the gutter to the right of your file.
+
+![Breakpoint](http://f.cl.ly/items/090V0x2a280x093N3q0Q/Screen%20Shot%202013-09-25%20at%205.23.12%20PM.png)
+
+You can see all of the breakpoints set in your current workspace with the *Breakpoints Navigator*.
+
+![Breakpoints Navigator](http://f.cl.ly/items/2r2c1r0e2l2J0d3M0v3i/Screen%20Shot%202013-09-25%20at%205.24.28%20PM.png)
+
+Active breakpoints are in dark blue and inactive breakpoints are ghosted out.
+
+When your application hits a breakpoint, the app will pause and the debugger becomes active.
+
+![](http://f.cl.ly/items/1k2K2A27360O1w2V2y0B/Screen%20Shot%202013-09-25%20at%205.25.37%20PM.png)
+
+You can use the pane on the left to navigate objects, print their descriptions, etc. The console on the right side of the debugger pane, which can be shown and hidden with ⌘⇧Y, is the debugger. Here you can continue (`c`) execution until the next breakpoint, step to the next line (`n`), and print pointer descriptions (`p`).
+
+If it can determine it, LLDB will cast structs to their type. So `p size` becomes `p (CGSize)size`. Sometimes, LLDB can't suss out what type to cast to, so you might have to do it yourself (i.e.: `p (CGSize)[someObj someMethodReturningSize]`).
+
+You can also print out object descriptions with the `po` command: `po object` will call `object`'s `description` and print that out to the debugging console. This is useful for views because their description contains their frame.
+
+The debugger can be used to invoke methods, like `p [obj method]`, or `p obj.property`.
+
+The debugger doesn't have access to `enum`s or `#defines`. This makes this ... tricky sometimes. For example, if you've received data from an API and you want to turn it into an `NSString`, you'd typically use `[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]`, but that encoding is an `enum` member, so you have to use `4`, instead.
