@@ -2,8 +2,6 @@ Instruments to profiling and profit
 ----
 (by [AshFurrow](http://github.com/AshFurrow))
 
-by @AshFurrow
-
 Instruments is a tool that ships with Xcode that profiles your app for different characteristics. There are different profilers you can use from within Instruments – we'll cover the common ones later. For now, we need to make an important point.
 
 Deferred Mode
