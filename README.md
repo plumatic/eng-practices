@@ -12,4 +12,4 @@ Hopefully you too will find them to be a useful tool for improving your craft.
 - [Readable Clojure ns Layout](clojure/20130927-ns-organization.md): conventions about the layout of a namespace file.
 
 ## iOS
-- [Using Instruments effectively](ios/20131009-profiling-using-instruments.md): an overview on how to effectively use instruments
+- [Profiling and Debugging](ios/20131009-profiling-using-instruments.md): an overview on how to effectively use instruments and the debugger
