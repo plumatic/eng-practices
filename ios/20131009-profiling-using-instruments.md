@@ -1,6 +1,8 @@
-Instruments to profiling and profit
-----
+Profiling and Debugging
+===============
 (by [AshFurrow](http://github.com/AshFurrow))
+
+# Instruments
 
 Instruments is a tool that ships with Xcode that profiles your app for different characteristics. There are different profilers you can use from within Instruments – we'll cover the common ones later. For now, we need to make an important point.
 
@@ -80,8 +82,7 @@ Open the Extended Details pane and select the leaked object to see the stack tra
 
 ![](http://f.cl.ly/items/1L0d282b1w1M402Q3A1k/Screen%20Shot%202013-09-25%20at%205.01.11%20PM.png)`
 
-Debugger
-----------------
+# Debugger
 
 Xcode 5 ships with the LLDB debugger, which is automatically attached to a running application. You can add breakpoints to your project by clicking on the gutter to the right of your file.
 
