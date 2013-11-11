@@ -75,9 +75,9 @@ For these reasons, it's crucial to have conventions about the layout of a namesp
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Public
 
-(s/defn learn-linear-regression
+(s/defn learn-linear-regression :- SparseFeatureVector
   "Takes a sequence of LabeledRegressionExamples and returns a SparseFeatureVector from feature keys to their learned least-squares double value"
-  ^SparseFeatureVector [^{:s [LabeledRegressionExample]} training-data]
+  [training-data :- [LabeledRegressionExample]]
   (let [[all-feats feat-idx] (build-feat-index training-data)
         indexed-training-data (map (fn [[target fv]]
                                      [target (indexed-feat-vec feat-idx fv)])
