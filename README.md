@@ -6,6 +6,8 @@ and talk about how we can become better software engineers.
 We've polished up some of our better discussions and released them here.
 Hopefully you too will find them to be a useful tool for improving your craft.
 
+## Git 
+- [Prismatic Git practices](git/20140403-git.md): our branching model, PR and commit rules, etc.
 
 ## Clojure
 - [Data Representation in Clojure](clojure/20130926-data-representation.md): design choices for when to use maps, defrecords, deftypes, and reify.
