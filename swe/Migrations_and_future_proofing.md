@@ -1,24 +1,34 @@
-# Future proofing and migrations
+# Migrations and Future Proofing
 
 You've implemented a new feature, which involved refactoring some existing data formats or server handlers.  Everything looks good, the tests all pass, and (if applicable) the latest clients (frontend and/or backend) all seem to work with the latest servers.  Ship it?!
 
-<p align="center"><img title="Happy system" src="migrations/1.png" width=80%></p>
-
 Not so fast.  
 
-If your changes involve **formatting changes to data at rest**, and/or **interface changes to servers with clients running in other processes** (including client apps or even replicated versions of the same service), you also have to worry about (and test) how your changes will interact with **old data or code**.
+If your changes involve formatting changes to **data at rest**, and/or interface changes to servers with **clients running in other processes**, you also have to worry about (and test) how your changes will interact with **old data or code**.
 
 This document first talks about the issues (**inertia**), how to deal them when they come up (**migrations**), and then leads into a discussion of best practices (**forward compatibility**) to reduce the need for or difficulty of future migrations.  
 
+## Examples
+
+Not all code has inertia.  For example, consider a one-off script that you run on your laptop.  The code is self-contained, has no other processes relying on it, and can effectively be changed and rerun at any time.
+
+At Prismatic, we run dozens of highly availabile services in the cloud, process and store millions of documents every day, and regularly ship client apps to customers' iOS and Android devices.  Here are some hypothetical situations illustrating how inertia of code and data can manifest in practice in this more complex environment:
+
+ - We developed a new feature, which required a small change to the data returned by an handler in our API server. Compatibility was tested against the latest version of our iOS app, after which the change was deployed to production.  Immediately, 5% of our users' iOS apps crashed, because they turned off auto-update and are still on version 1.0, which turned out to be incompatible with the modified API handler. 
+ - We have many terabytes of documents in a data store, which we both write to and read from in production.  We want to add a new field to each document, but unfortunately the existing code crashes when it sees a document with the new field.  It seems like any step in the right direction (migrate the data, deploy code that expects the new field) will fail; at the same time, we also don't want to resort to scheduled downtime to do the migration.
+    
+Later, we describe concrete recipes for dealing with these and related problems without downtime.  However, we note that even in this complex environment, not all changes run afoul of inertia; in particular, changes that do not affect data at rest or cross-process APIs are always safe, since new code is always shipped to a single process atomically.
 
 # Inertia (why do we have to deal with old stuff?) 
 
 
 ## Old code 
 
-In the best case, stored data formats haven't changed, and we're dealing with code that's all running under our control (e.g., on EC2).  In that case, it might not be obvious that we have anything to worry about.  If all the incompatibilities are encapsulated in a single process, we are in fact probably in good shape since we can deploy it atomically.  But if the change encapsulates multiple processes, and we're not able to update all of them **simultaneously** (typically a bad idea anyway, as we'll see later in this section), we have to think about the transitional period where both old and new code are running at the same time.
+When we change APIs that cross process boundaries, we have to think about the transitional period where both old and new code are running at the same time.  
 
-In the worst case, the old code is not under our control.  We have external clients for our APIs, which might range from web apps (possible to force refresh), to iOS apps or business customers where we have no explicit control over when old code is replaced with new (beyond perhaps strong nudges or outright breakage).  This might mean supporting old API clients for months or years after we might wish they were dead and gone.  
+In the worst case, some of the old code is not under our control.  We have external clients for our APIs, which could range from a web app (possible to force-refresh) to an iOS app (possible to ship updates) to third-party API clients (not our code).  In the latter two cases, we have no explicit control over when old code is replaced with new, and might have to support old API clients for months or years after we might wish they were dead and gone.  
+
+Moreover, even in the best case where all affected code is running under our control (e.g., on EC2), it's often impossible (or at least unwise) to update all affected processes **simultaneously** (as we'll discuss shortly).  Thus, we typically still have to think about the interaction of old and new code even in this "best" case scenario.
 
 
 ## Old data 
@@ -33,24 +43,27 @@ Old data is in some ways better, and many ways worse, than old code.  On the ups
 
 ## Simultaneity and backwards compatibility
 
-If we could simultaneously replace all our old code with new code, and (as applicable) upgrade all our old data to the format, we'd be happy campers (and this document would be much shorter).  Unfortunately, this is typically impossible, and even when it's possible it's often unwise.  
+If we could simultaneously replace all our old code with new code, and (as applicable) upgrade all our old data to a new format, we'd be happy campers (and this document would be much shorter).  Unfortunately, this is typically impossible, and even when it's possible it's often unwise.  
 
  - If we introduce incompatibilities with code or data that's not under our control, it's obviously impossible to ensure simultaneity.
  - If we introduce incompatibilities of code with large datasets, it's probably impossible to update the code and migrate all the data simultaneously without downtime.
  - Even if there is no data involved and all the code is under our control, we probably can't redeploy *everything* simultaneously without downtime (unless we're willing to bring up a new copy of the entire system and then move people over).  
  - Even if in principle we can update all the code (and data) simultaneously, if something goes wrong it may be very difficult to  **roll back** a big bang release, especially when data format changes are involved. 
  
-When we cannot update all our code (and data) simultaneously, we have to ensure a *deployment strategy* that provides a **path of backwards compatibility**.  This is a sequence of steps, where at each step all running code is able to interoperate with the other code and data visible at this step.  The next section covers a few common deployment strategies that provide this property; then the final section discusses patterns that help ensure **forward compatibility**, which is more or less the maximization of expected future backwards compatibility.
+When we cannot update all our code (and data) simultaneously, we have to ensure a *deployment strategy* that provides a **path of backwards compatibility**.  This is a sequence of steps, where at each step all running code is able to interoperate with the other code and data visible at this step.  
 
+<p align="center"><img title="Happy system" src="migrations/1.png" width=60%></p>
+
+The next section describes recipes for deployment strategies that provide this property.
 
 
 # Migrations (scenarios and strategies)
 
-This section covers various scenarios and strategies for providing backwards compatibility, in roughly increasing order of difficulty.  
+This section covers various scenarios and strategies for providing a path of backwards compatibility, in roughly increasing order of difficulty.  
 
 ## Full forwards and backwards compatibility
 
-The (often) best-case scenario is full compatibility.  All old code can interact with all new code and data, and all new code can interact with all old code and data out there.  
+The best-case scenario is full compatibility.  All old code can interact with all new code and data, and all new code can interact with all old code and data out there.  
 
 <p align="center"><img title="Happy change" src="migrations/2.png" width=50%></p>
 
@@ -62,7 +75,7 @@ As mentioned above, breaking changes to code are typically easier to deal with t
 
 ### Deploy dependencies (additions only)
 
-If your change only involves adding new methods to an API, or a new data format, old clients can often continue to function as-is.  In this case, the typical complication is the introduction of a **deploy dependency** -- the server with the new APIs (or producer of the new data) must be deployed before all consumers of the new APIs/data.  The only exception is if the consumers are made robustly backwards compatible (able to gracefully handle missing new APIs/data), in which case we're in the previous happy situation.  
+If your change only involves adding new methods to an API, or a new data format, old clients can often continue to function as-is.  For example, perhaps we add a new handler to our API to support of a new feature in our iOS app.  In this case, the typical complication is the introduction of a **deploy dependency** -- the server with the new APIs (or producer of the new data) must be deployed before all consumers of the new APIs/data.  The only exception is if the consumers are made robustly backwards compatible (able to gracefully handle missing new APIs/data), in which case we're in the previous happy situation.  
 
 <p align="center"><img title="Deploy dependency" src="migrations/3.png" width=50%></p>
 
@@ -73,18 +86,18 @@ The basic steps in this deployment strategy are are:
 3. The new client(s) are deployed, which can rely on the functionality in the new server
 4. (optional) At some later point, the old client is fully replaced by the new
 
-Deploy dependencies are relatively harmless, but should always be *declared* in pull requests, and typically more widely announced, since they can break the assumption that [everything on master is deployable](https://github.com/Prismatic/eng-practices/blob/master/git/20140403-git.md) if done in a single change.  If you introduce a deploy dependency, you should be responsible for ensuring that the server(s) are deployed as soon as possible, ideally immediately after your code hits master.
+Deploy dependencies are relatively harmless, but should be handled carefully to ensure that the new code is not deployed in the wrong order.  Whenever possible, server and client changes should be made in separate changesets, loudly *declared* in pull requests, and the client change should only be merged to a production branch *after* the server change has been merged and fully deployed.  
 
 As we'll discuss in the final section, extensions to existing methods (such as the addition of new fields to responses) can often be handled in this setup if clients are carefully designed to be forward-compatible with such changes.  
  
 
 ### API versioning (breaking code changes)
 
-Breaking changes introduce fatal cycles into the "deploy dependency graph", since new clients need new server APIs and old clients need old APIs, but all the old code can't usually be replaced simultaneously.
+Suppose we have an existing API method `/interests` that returns a list of `String`s to describe a user's interests.  A new feature of the iOS app requires more information about each interest, so we want to change this to a list of maps like `{'name':foo, ...}`.  Breaking changes like this introduce fatal cycles into the "deploy dependency graph", since new clients need new server APIs and old clients need old APIs, but all the old code can't usually be replaced simultaneously.  
 
 <p align="center"><img title="Sad Panda" src="migrations/4.png" width=50%></p>
 
-Assuming there are no changes to data at rest, these changes can be converted into the happier "additions only" scenario above by using **API versioning**, (e.g., adding a new method `v2/foo` rather than making breaking changes to `v1/foo`).   
+Assuming there are no changes to data at rest, these changes can be converted into the happier "additions only" scenario above by using **API versioning**, (e.g., adding a new method `v2/interests` rather than making breaking changes to `v1/interests`).   
 
 <p align="center"><img title="API versioning" src="migrations/5.png" width=50%></p>
 
@@ -100,7 +113,7 @@ The cost of API versioning is that until (4) you have two API methods that do si
 
 ## Breaking data format changes 
 
-As described in the previous section, backwards-incompatible data changes are more complex since data cannot typically be updated atomically the way code can; because data is both **big** and **dumb**, it may take a long time to migrate, and it typically can't smartly present itself to old code in a way that papers over the changes.  
+As described in the previous section, backwards-incompatible data changes are more complex since data cannot typically be updated atomically the way code can; because data is both **big** and **dumb**, it may take a long time to migrate, and it typically can't smartly present itself to old code in a way that papers over the incompatibilities.  
 
 *Note that this document primarily describes general approaches applicable to any data storage technology; for sufficiently "smart" systems (such as SQL) other approaches may be applicable, which we only touch on briefly here.*
 
@@ -131,7 +144,9 @@ This is effectively a simplified version of the "Write Both" migration in the ne
 
 Things become significantly more complicated when you need to accommodate writes to your data during the migration process, because you have to ensure that writes during the migration are all captured in the new format by the end of the migration.  
 
-If there is at most a single writer (per datum), the simplest option is often the "Write Both" migration with multi-place versioning.
+If there is at most a single writer (per datum), the simplest option is often the "Write Both" migration with multi-place versioning.  
+
+For example, when a new user signs up for Prismatic with a Twitter account, within seconds a worker process fetches the user's tweets, analyzes all shared URLs, and stores suggested topics in S3 for presentation later in the onboarding process.  While we have multiple workers computing topic suggestions, the data is effectively write-once with no concurrency concerns, so a "Write Both" migration was appropriate when we wanted to make breaking changes to the suggestions data format.
 
 <p align="center"><img title="Write Both" src="migrations/6.png" width=60%></p>
 
@@ -141,12 +156,13 @@ In this deployment strategy, the writer propagates changes to both the new and o
 2. The writer is deployed with code that continues to read from the old location, but writes to **both** the old location as well as a new location in the new format 
 3. The data is batch migrated from the old to new format.  Note that the batch migration process is technically an additional writer that must be properly synchronized with other writer(s) to avoid losing their concurrent updates.  This can sometimes be simplified by running the migration **inside** the writer (which could be combined with step (2) in a single deploy).  
 4. Readers are deployed to read from the new location
-5. The writer is deployed to read and write only from the new location
+5. The writer is deployed to read and write only from the new location, and old data can be archived
 
 The primary advantages of this approach are:
 
  - Readers only need to be deployed once, and the writer only needs to be deployed twice
  - Readers do not need to be concerned with multiple versions of data, and it's always clear where to find the latest version of a datum
+ - Readers can be updated incrementally -- if you have many different clients for your data, you can take as long as you want to move them all over to the new format in step (4) -- and each reader only needs to be updated and deployed once
  
 However, there are several disadvantages that are alleviated by the more complex "Read Latest" migration described next:
 
@@ -157,14 +173,16 @@ However, there are several disadvantages that are alleviated by the more complex
  
 #### Variations: SQL databases and transaction logs
 
-That said, there are some common variations of the "Write Both" approach for multiple writers that can work well for "sufficiently smart" data, such as SQL databases.  For instance, several systems ([1](https://github.com/soundcloud/lhm),[2](https://www.facebook.com/note.php?note_id=430801045932),[3](http://openarkkit.googlecode.com/svn/trunk/openarkkit/doc/html/oak-online-alter-table.html)) use *triggers* to propagate updates to the old format to the new format during a migration.  [Others](https://github.com/freels/table_migrator) rely instead on an indexed `updated_at` timestamp column to find rows that still need to be migrated.
+That said, there are some common variations of the "Write Both" approach for multiple writers that can work well for "sufficiently smart" data, such as a SQL database.  For instance, several systems ([1](https://github.com/soundcloud/lhm),[2](https://www.facebook.com/note.php?note_id=430801045932),[3](http://openarkkit.googlecode.com/svn/trunk/openarkkit/doc/html/oak-online-alter-table.html)) use *triggers* to propagate updates to the old format to the new format during a migration.  [Others](https://github.com/freels/table_migrator) rely instead on an indexed `updated_at` timestamp column to find rows that still need to be migrated.
 
-Similar schemes can be concocted to work with any system that maintains an explicit write log, since the latest state of the 'new data' can always be reconstructed from the write log.
+Similar schemes can be concocted to work with any system that maintains an explicit write log, since the latest state of the new data can always be reconstructed from the write log.
 
  
 ### "Read Latest" migrations
 
-The "Read Latest" migration is more complex than "Write Both".  In exchange for this complexity, it easily accommodates multiple writers, in-place migrations, and the storage of new information in the new format before (or without) a batch migration of old data.
+The "Read Latest" migration is more complex than "Write Both".  In exchange for this complexity, it easily accommodates multiple writers, in-place migrations, and the storage of new information in the new format before (or without) a batch migration of old data.  
+
+For example, we have many terabytes of old documents stored at Prismatic, and at any time any could be retrieved (or modified) by any user visiting their profile page (and potentially doing a new action).  When we've made breaking changes to the format, we've done a "Read Latest" migration to ensure safety in the face of concurrent writes. 
 
 <p align="center"><img title="Read Both" src="migrations/7.png" width=60%></p>
 
@@ -200,9 +218,9 @@ Ensuring **forward compatibility** means writing code that will accommodate futu
 
 ## Don't be rash
 
-When you introduce a new API endpoint or format for data at rest, think hard.  These decisions should generally be taken much more seriously than namespace or data decisions that won't leave a single process.  You may end up with terabytes of data stored in this format, or stubborn users who refuse to update their two-year-old iOS client that accesses your API, and be stuck with this decision for a long time.  Think it through, bounce it off a co-worker or two, and imagine yourself two years in the future working through the worst options in the previous section before committing. 
+When you introduce a new API endpoint or format for data at rest, think hard.  These decisions should generally be taken much more seriously than API or data decisions that won't leave a single process.  You may end up with terabytes of data stored in this format, or stubborn users who refuse to update their two-year-old iOS client that accesses your API, and be stuck with this decision for a long time.  Think it through, bounce it off a co-worker or two, and imagine yourself two years in the future working through the worst options in the previous section before committing. 
 
-If you can test a new feature on the web (where you have to support old clients for a day), that's probably preferable to supporting your API for a year on iOS.  If testing on iOS is the best option, try to design the client code such that it degrades gracefully if you remove the server-side API so you're not stuck with it.  If you're designing an experimental server-side feature, see if you can store the data off to the side (e.g., in a separate bucket rather than on Docs) so you can just delete it if the experiment fails rather than being saddled with this data forever without a huge migration project.  
+If you can test a new feature on the web (where you have to support old clients for a day), that's probably preferable to supporting your API for a year on iOS.  If testing on iOS is the best option, try to design the client code such that it degrades gracefully if you remove the server-side API so you're not stuck with it.  If you're designing an experimental server-side feature, see if you can store the data off to the side (e.g., in a different location, rather than together with currently critical data) so you can just delete it if the experiment fails rather than being saddled with this data forever without a huge migration project.  
 
 ## Version up-front 
 
