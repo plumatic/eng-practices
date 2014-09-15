@@ -15,16 +15,15 @@ Not all code has inertia.  For example, consider a one-off script that you run o
 At Prismatic, we run dozens of highly availabile services in the cloud, process and store millions of documents every day, and regularly ship client apps to customers' iOS and Android devices.  Here are some hypothetical situations illustrating how inertia of code and data can manifest in practice in this more complex environment:
 
  - We developed a new feature, which required a small change to the data returned by an handler in our API server. Compatibility was tested against the latest version of our iOS app, after which the change was deployed to production.  Immediately, 5% of our users' iOS apps crashed, because they turned off auto-update and are still on version 1.0, which turned out to be incompatible with the modified API handler. 
- - We have many terabytes of documents in a data store, which we both write to and read from in production.  We want to add a new field to each document, but unfortunately the existing code crashes when it sees a document with the new field.  It seems like any step in the right direction (migrate the data, deploy code that expects the new field) will fail; at the same time, we also don't want to resort to scheduled downtime to do the migration.
+ - We have many terabytes of documents in a data store, which we both write to and read from in production.  A migration job is started to add a new field to each document, and the existing production code starts crashing when it sees documents with the new field.  It seems like any step in the right direction (migrate the data, deploy code that expects the new field) will fail; at the same time, we also don't want to resort to scheduled downtime to do the migration.
     
-Later, we describe concrete recipes for dealing with these and related problems without downtime.  However, we note that even in this complex environment, not all changes run afoul of inertia; in particular, changes that do not affect data at rest or cross-process APIs are always safe, since new code is always shipped to a single process atomically.
+Later, we describe concrete recipes for dealing with these and related problems without downtime.  
 
 # Inertia (why do we have to deal with old stuff?) 
 
-
 ## Old code 
 
-When we change APIs that cross process boundaries, we have to think about the transitional period where both old and new code are running at the same time.  
+Since code in a single process is deployed atomically, breaking changes localized to code running in a single process are typically safe.  But when we change APIs that cross process boundaries (such as updating the interface for an API handler), we have to think about the transitional period where both old and new code is running at the same time.  
 
 In the worst case, some of the old code is not under our control.  We have external clients for our APIs, which could range from a web app (possible to force-refresh) to an iOS app (possible to ship updates) to third-party API clients (not our code).  In the latter two cases, we have no explicit control over when old code is replaced with new, and might have to support old API clients for months or years after we might wish they were dead and gone.  
 
@@ -35,9 +34,9 @@ Moreover, even in the best case where all affected code is running under our con
 
 Old data is in some ways better, and many ways worse, than old code.  On the upside, at least the data is typically under our control; we can choose to rewrite it at any time.  Downsides are:
 
- - Sometimes the data is not actually under our control.  For example, urls linked from other sites or emails we have sent, or (to a lesser extent) data stored on clients we control. 
+ - Sometimes the data is not actually under our control.  For example, consider urls linked from emails we have sent, or (to a lesser extent) data stored on iOS clients we control. 
  - Data can be **big**; it might take hours or days to migrate a data store from an old format to a new format, and we probably want our application to continue working throughout the migration process.
- - Data often must be **consistent** -- we often want all code (old and new) interacting with a given piece of data to reflect the latest value at a given point (including updates made while the migration is ongoing).
+ - Data often must be **consistent** -- we often want all code (old and new) interacting with a given piece of data to reflect the latest value at a given point (including updates made while the migration is ongoing).  For example, if a user adds a comment to a document after the document has been migrated to a new format with new keys, it's not acceptable for processes during or after the migration to fail to report the new comment.
  - Data is **dumb** -- we can try to make our new code smart about interacting with old code, but there's often no parallel to this for our new data formats. 
  
 
@@ -45,7 +44,7 @@ Old data is in some ways better, and many ways worse, than old code.  On the ups
 
 If we could simultaneously replace all our old code with new code, and (as applicable) upgrade all our old data to a new format, we'd be happy campers (and this document would be much shorter).  Unfortunately, this is typically impossible, and even when it's possible it's often unwise.  
 
- - If we introduce incompatibilities with code or data that's not under our control, it's obviously impossible to ensure simultaneity.
+ - If we introduce incompatibilities with code or data that's not under our control (e.g., old iOS app versions), it's obviously impossible to ensure simultaneity.
  - If we introduce incompatibilities of code with large datasets, it's probably impossible to update the code and migrate all the data simultaneously without downtime.
  - Even if there is no data involved and all the code is under our control, we probably can't redeploy *everything* simultaneously without downtime (unless we're willing to bring up a new copy of the entire system and then move people over).  
  - Even if in principle we can update all the code (and data) simultaneously, if something goes wrong it may be very difficult to  **roll back** a big bang release, especially when data format changes are involved. 
@@ -54,7 +53,9 @@ When we cannot update all our code (and data) simultaneously, we have to ensure 
 
 <p align="center"><img title="Happy system" src="migrations/1.png" width=60%></p>
 
-The next section describes recipes for deployment strategies that provide this property.
+This example shows a simple system, where we have two processes that read and write from a data store. There is a server that reads and writes to the same datastore and provides an API for clients (e.g, our iOS app).  In this case the system is "happy", since all all communication links are compatible (indicated by green links).  Conceptually, our deployment strategy must ensure that at every step the entire system stays "happy" in this way.
+
+The next section describes recipes for such deployment strategies.
 
 
 # Migrations (scenarios and strategies)
@@ -121,12 +122,12 @@ As described in the previous section, backwards-incompatible data changes are mo
 
 As with APIs, overcoming breaking data format changes typically require **versioning** (or downtime).  There are at least two ways to version data:
 
-1. **In-place:** store a version number inside each datum (or otherwise infer the version from the data), and as you upgrade overwrite the old datum (backing it up if desired)  
-2. **Multi-place:** store data in a versioned location, so that new versions can live alongside old versions
+1. **In-place:** store a version number inside each datum (or otherwise infer the version from the data), and as you upgrade overwrite the old datum (backing it up if desired).  Adapting the above example to data-at-rest, we might have a single storage location `interests` that stores a mapping from `user-id` to **either** `{:version "1" :data ["cats" "dogs"]}` or `{:version "2" :data [{:name "cats" ...} {:name "dogs" ...}]}`.
+2. **Multi-place:** store data in a versioned location, so that new versions can live alongside old versions.  Using the same example, we might have one location `interests_1` that maps `user-id` to `["cats" "dogs"]` and a new location `interests_2` that maps `user-id` to `[{:name "cats" ...} {:name "dogs" ...}]`.
 
 The advantage of in-place versioning is that there's a single location to find the latest version of a datum.  This can make it much easier to ensure data consistency between processes (as we'll see in a second), especially when there are multiple concurrent writers that need transactional semantics.  However, the disadvantage is that during deployment you must ensure that all running code can read all data versions currently in play.
 
-Multi-place versioning can be simpler because each process can read data in a single format.  However, now the onus is on the programmer to ensure consistency requirements are met across all versions of a datum in play.  When consistency requirements are lax (e.g., write-once data), this approach can be much simpler, and also has a much easier story for supporting old code and rolling back as needed.
+Multi-place versioning can be simpler because each process can read data in a single format, by just choosing the appropriate location to read from.  However, now the onus is on the programmer to ensure consistency requirements are met across all versions of a datum in play.  When consistency requirements are lax (e.g., write-once data), this approach can be much simpler, and also has a much easier story for supporting old code and rolling back as needed.
 
 As we will see, zero-downtime approaches to data migration typically involve either **pausing writes**, or deploying code that can **simultaneously read *or* write both versions** of data for the duration of the migration.  
 
@@ -182,7 +183,7 @@ Similar schemes can be concocted to work with any system that maintains an expli
 
 The "Read Latest" migration is more complex than "Write Both".  In exchange for this complexity, it easily accommodates multiple writers, in-place migrations, and the storage of new information in the new format before (or without) a batch migration of old data.  
 
-For example, we have many terabytes of old documents stored at Prismatic, and at any time any could be retrieved (or modified) by any user visiting their profile page (and potentially doing a new action).  When we've made breaking changes to the format, we've done a "Read Latest" migration to ensure safety in the face of concurrent writes. 
+For example, we have many terabytes of old documents stored at Prismatic, and at any time any document could be retrieved (or modified) by any user visiting their profile page (and potentially doing a new action).  When we've made breaking changes to the format, we've done a "Read Latest" migration to ensure safety in the face of concurrent writes. 
 
 <p align="center"><img title="Read Both" src="migrations/7.png" width=60%></p>
 
@@ -204,7 +205,7 @@ The primary advantages of this approach are:
  
 The disadvantages are:
  
- - More total deployments are needed to fully move through the process (three deployments for writers and two for readers).  Note that if the last two steps are skipped, the deploy count is actually the same as "Write Both"
+ - More total deployments are needed to fully move through the process (three deployments for writers and two for readers).  Note that if the last two steps are skipped, the deploy count is actually the same as "Write Both".
  - Readers need to be concerned with handling both formats.  In principle, this could involve a lot of forked code paths for handling old and new data.  In practice, this can typically be done simply by always using a "new" in-memory representation, upgrading datums on read, and downgrading on write as necessary.
 
 #### Variations: single reader/writer
@@ -228,11 +229,11 @@ Most of the migration options above involve versioning of data and APIs.  You'll
 
 ## Constrain access when appropriate
 
-As we've seen above, migrations become increasingly difficult as more processes need to read (and especially write) to a given piece of data.  Multiple writers always come with potentially concurrency issues, and these are only made worse when the data format needs to change in the future.  Hiding data behind an API rather than accessing directly from a variety of systems can simplify concurrency issues and future migrations, although it can also increase the overall system complexity and add latency, so should be considered carefully on a case-by-case basis.
+As we've seen above, migrations become increasingly difficult as more processes need to read (and especially write) a given piece of data.  Multiple writers always come with potentially concurrency issues, and these are only made worse when the data format needs to change in the future.  Hiding data behind an API rather than accessing directly from a variety of systems can simplify concurrency issues and future migrations, although it can also increase the overall system complexity and add latency, so should be considered carefully on a case-by-case basis.
 
 ## Be safe, but not overly strict
 
-Know that things will change in the future, and try to ensure that your code won't fail silently when dealing with incompatible code or data.  This means schematizing API endpoints and reads and writes of data when it crosses process boundaries. 
+Know that things will change in the future, and try to ensure that your code won't fail silently when dealing with incompatible code or data.  This means [schematizing](https://github.com/Prismatic/schema) API endpoints and reads and writes of data when it crosses process boundaries. 
 
 That said, the best case above happens when your data and endpoints are both forward and backwards compatible.  Overly strict schemas can make forward compatibility very difficult.  Think about **schema evolution** in advance, and ways that you can make your code flexible without hampering safety.  For example, if you allow your code to accept arbitrary new keys on data, the system will be much easier to extend without explicit API or data versioning.  (There is a lot of existing literature about this with regards to protocol buffers, where one common but controversial suggestion is to make all fields optional to maximize potential for forward compatibility).  One potential "gotcha" here is what to do when writing back a modified datum with new fields, or sending datums with new fields back to an API in subsequent requests -- neither dropping nor including the field can always be correct, so there are no easy answers without thinking hard about your application.  
 
