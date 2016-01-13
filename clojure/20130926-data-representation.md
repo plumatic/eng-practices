@@ -335,9 +335,9 @@ In this case, there are three options at your disposal, none of which is really 
 
 <a name="footnotes"></a>
  
-  1. [Schema](https://github.com/Prismatic/schema) is a library for declaring data shapes, and annotating functions with input and output schemas.  Besides their other benefits, Records have the documentation advantage of having a concrete description that is type-hintable; among other things, schema brings these same benefits to ordinary Clojure maps.
+  1. [Schema](https://github.com/plumatic/schema) is a library for declaring data shapes, and annotating functions with input and output schemas.  Besides their other benefits, Records have the documentation advantage of having a concrete description that is type-hintable; among other things, schema brings these same benefits to ordinary Clojure maps.
   2. [Potemkin](https://github.com/ztellman/potemkin) provides some great tools for dealing with interfaces, protocols, records, and so on.  In particular, it provides variants of `defprotocol` and `defrecord` that are more repl-friendly, and an implementation of `definterface` that's a drop-in replacement for `defprotocol`, allowing full primitive support with automatic wrapper functions (but without the open-ness of protocols, of course).
-  3. [Plumbing](https://github.com/Prismatic/plumbing) is a library of Clojure utility functions, including Graph, a tool for declarative description of functional processes.
+  3. [Plumbing](https://github.com/plumatic/plumbing) is a library of Clojure utility functions, including Graph, a tool for declarative description of functional processes.
   
 
 

@@ -233,7 +233,7 @@ As we've seen above, migrations become increasingly difficult as more processes 
 
 ## Be safe, but not overly strict
 
-Know that things will change in the future, and try to ensure that your code won't fail silently when dealing with incompatible code or data.  This means [schematizing](https://github.com/Prismatic/schema) API endpoints and reads and writes of data when it crosses process boundaries. 
+Know that things will change in the future, and try to ensure that your code won't fail silently when dealing with incompatible code or data.  This means [schematizing](https://github.com/plumatic/schema) API endpoints and reads and writes of data when it crosses process boundaries. 
 
 That said, the best case above happens when your data and endpoints are both forward and backwards compatible.  Overly strict schemas can make forward compatibility very difficult.  Think about **schema evolution** in advance, and ways that you can make your code flexible without hampering safety.  For example, if you allow your code to accept arbitrary new keys on data, the system will be much easier to extend without explicit API or data versioning.  (There is a lot of existing literature about this with regards to protocol buffers, where one common but controversial suggestion is to make all fields optional to maximize potential for forward compatibility).  One potential "gotcha" here is what to do when writing back a modified datum with new fields, or sending datums with new fields back to an API in subsequent requests -- neither dropping nor including the field can always be correct, so there are no easy answers without thinking hard about your application.  
 
